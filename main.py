@@ -1,12 +1,13 @@
 import argparse
 import json
 from datetime import datetime, timedelta
+import time
 from dateutil.parser import parse
 from summarizer import summarize_vulnerabilities
 import os
-from scrapers.sources import get_full_disclosure_latest, get_exploitdb_rss
-from scrapers.nist import get_nist_cves
-from scrapers.nist import Severity
+from scrapers.sources import get_full_disclosure_latest, get_exploitdb_rss, get_nist_cves, Severity
+from colorama import init, Fore, Style
+import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -50,8 +51,8 @@ def parse_args():
     
     # Limit options
     limit_group = parser.add_argument_group('Limits')
-    limit_group.add_argument('--max-items', '-m', type=int,
-                         help='Maximum number of vulnerabilities to retrieve')
+    limit_group.add_argument('--max-items', '-m', type=int, default=100,
+                         help='Maximum number of vulnerabilities to retrieve per source')
     limit_group.add_argument('--min-severity', '-M',
                          choices=['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
                          help='Minimum severity level for vulnerabilities')
@@ -74,14 +75,11 @@ def parse_args():
         args.type = 'all'
         args.collect = True
         args.summarize = True
-        args.days = 30
-        # Somente sobrescrever max_items se o usuário não tiver definido -m
-        if not args.max_items:
-            args.max_items = None
-        args.include_unclassified = True
+        args.days = args.days or 30
+        args.include_unclassified = args.include_unclassified or False
     
     if args.quick_scan:
-        args.type = 'sources'
+        args.type = 'all'
         args.collect = True
         args.summarize = True
         args.days = 7
@@ -125,28 +123,20 @@ def collect_vulnerabilities(args):
     max_items = args.max_items
     source_type = 'all' if args.type == 'all' else ('nist' if args.type == 'nist' else 'sources')
     
-    # Calculate max items per source
-    if args.type == 'all' and max_items:
-        active_sources = len(args.sources) if 'nist' not in args.sources else len(args.sources) + 1
-        max_per_source = max_items // active_sources
-    else:
-        max_per_source = max_items
-    
-    print(f"Total limit: {max_items}, Per source limit: {max_per_source}")
+    print(f"Total limit per source: {max_items}")
     
     if args.type in ['sources', 'all']:
         print(f"Collecting items from sources between {args.start_date.strftime('%Y-%m-%d')} and {args.end_date.strftime('%Y-%m-%d')}...")
         
         if 'fulldisclosure' in args.sources:
             fd_vulns = get_full_disclosure_latest(args.start_date, args.end_date, use_ai=not args.no_ai)
-            fd_vulns = fd_vulns[:max_per_source] if max_per_source else fd_vulns
+            fd_vulns = fd_vulns[:max_items] if max_items else fd_vulns
             vulns.extend(fd_vulns)
             print(f"Full Disclosure results: {len(fd_vulns)}")
         
         if 'exploitdb' in args.sources:
-            remaining = max_items - len(vulns) if max_items else None
             edb_vulns = get_exploitdb_rss(args.start_date, args.end_date)
-            edb_vulns = edb_vulns[:max_per_source] if max_per_source else edb_vulns
+            edb_vulns = edb_vulns[:max_items] if max_items else edb_vulns
             vulns.extend(edb_vulns)
             print(f"Exploit-DB results: {len(edb_vulns)}")
             
@@ -157,16 +147,11 @@ def collect_vulnerabilities(args):
             start_date=args.start_date,
             end_date=args.end_date,
             classified_only=not args.include_unclassified,
-            max_cves=max_per_source,  # Usa o mesmo limite por fonte
+            max_cves=max_items,  # Apply the limit per source
             min_severity=args.min_severity
         )
         vulns.extend(nist_vulns)
         print(f"NIST CVE results: {len(nist_vulns)}")
-    
-    # Aplica limite final ao total
-    if max_items and len(vulns) > max_items:
-        vulns = vulns[:max_items]
-        print(f"Applied final limit: {len(vulns)}/{max_items} vulnerabilities")
     
     output_file = f"{args.output_dir}/{source_type}_vulnerabilities.json"
     save_to_json(vulns, output_file)
@@ -174,6 +159,18 @@ def collect_vulnerabilities(args):
     return vulns, source_type
 
 def main():
+    init(autoreset=True)
+    print(Fore.GREEN + r"""
+  _   _       __          __   _       _               
+ | | | |      \ \        / /  | |     | |              
+ | |_| |__   __\ \  /\  / /_ _| |_ ___| |__   ___ _ __ 
+ | __| '_ \ / _ \ \/  \/ / _` | __/ __| '_ \ / _ \ '__|
+ | |_| | | |  __/\  /\  / (_| | || (__| | | |  __/ |   
+  \__|_| |_|\___| \/  \/ \__,_|\__\___|_| |_|\___|_|   
+                                                      
+""", Style.RESET_ALL)
+    print(Fore.BLUE + "[theWatcher] Starting theWatcher..." + Style.RESET_ALL)
+    
     args = parse_args()
     
     if not args.collect and not args.summarize:
@@ -184,9 +181,11 @@ def main():
     source_type = 'sources'  # default
     
     if args.collect:
+        print(Fore.CYAN + "[theWatcher] Collecting vulnerabilities..." + Style.RESET_ALL)
         vulns, source_type = collect_vulnerabilities(args)
-    
+        
     if args.summarize:
+        print(Fore.CYAN + "[theWatcher] Summarizing vulnerabilities..." + Style.RESET_ALL)
         if not args.no_ai:
             try:
                 input_file = f"{args.output_dir}/{source_type}_vulnerabilities.json"
@@ -197,6 +196,8 @@ def main():
                 print(f"Expected input file: {input_file}")
         else:
             print("Summarization skipped (AI disabled)")
+    
+    print(Fore.GREEN + "[theWatcher] Done." + Style.RESET_ALL)
 
 if __name__ == "__main__":
     main()

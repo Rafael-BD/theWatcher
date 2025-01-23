@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import os
 from ai_prompts import summarization_prompt
 import math
+from colorama import Fore, Style
 
 load_dotenv()
 api_key = os.getenv('GEMINI_API_KEY')
@@ -84,8 +85,9 @@ Total Vulnerabilities Analyzed: {len(vulns)}
     return report
 
 def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.json", output_file: str = "./output/vulnerability_report.md"):
+    print(Fore.BLUE + f"[theWatcher] Loading vulnerabilities from {input_file}" + Style.RESET_ALL)
     if not api_key:
-        print("No API key found. Skipping summarization.")
+        print(Fore.YELLOW + "[theWatcher] No API key found. Skipping summarization." + Style.RESET_ALL)
         return
 
     with open(input_file, 'r', encoding='utf-8') as f:
@@ -99,9 +101,9 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
 
     # Process all batches first
     for i, batch in enumerate(batches):
+        print(Fore.BLUE + f"[theWatcher] Summarizing items in batch {i+1}/{total_batches}" + Style.RESET_ALL)
         if current_batch != i + 1:
             current_batch = i + 1
-            print(f"Processing batch {current_batch} of {total_batches}")
         
         if requests_count > 0 and requests_count % 5 == 0:
             print("Waiting 20s to avoid rate limiting...")
@@ -135,9 +137,9 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
                             'trends': classification.get('trends', [])
                         })
                         break
-                print(f"Retrying batch {current_batch}/{total_batches}...")
+                print(Fore.YELLOW + f"[theWatcher] Retrying batch {i+1}/{total_batches}..." + Style.RESET_ALL)
             except Exception as e:
-                print(f"Retrying batch {current_batch}/{total_batches}...")
+                print(Fore.YELLOW + f"[theWatcher] Retrying batch {i+1}/{total_batches}..." + Style.RESET_ALL)
             time.sleep(5)
 
         requests_count += 1
@@ -151,7 +153,7 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(report)
 
-    print(f"Report saved in {output_file}")
+    print(Fore.GREEN + f"[theWatcher] Report saved in {output_file}" + Style.RESET_ALL)
 
 def validate_summary_format(summary: dict) -> bool:
     """Validate if summary follows the required format"""

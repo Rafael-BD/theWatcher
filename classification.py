@@ -7,18 +7,26 @@ import time
 from typing import List
 from ai_prompts import classification_prompt
 import math
+from colorama import Fore, Style
 
 load_dotenv()
 api_key = os.getenv('GEMINI_API_KEY')
+use_ai = True
+
 if not api_key:
-    raise ValueError("GEMINI_API_KEY não encontrada no arquivo .env")
+    print(Fore.YELLOW + "[theWatcher] GEMINI_API_KEY not found in .env file. AI classification disabled." + Style.RESET_ALL)
+    use_ai = False
+else:
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    except Exception as e:
+        print(Fore.YELLOW + f"[theWatcher] Error configuring AI model: {e}. AI classification disabled." + Style.RESET_ALL)
+        use_ai = False
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-2.0-flash-exp")
-
-def classify_fd_titles(titles: List[str], batch_size: int = 20, use_ai: bool = True) -> List[dict]:
-    if not use_ai or not api_key:
-        print("AI classification disabled. Including all titles.")
+def classify_fd_titles(titles: List[str], month: str, batch_size: int = 20) -> List[dict]:
+    if not use_ai:
+        print(Fore.YELLOW + "[theWatcher] AI classification disabled. Skipping filtering." + Style.RESET_ALL)
         return [{"index": i, "title": t, "is_vulnerability": True} for i, t in enumerate(titles)]
 
     results = []
@@ -30,10 +38,10 @@ def classify_fd_titles(titles: List[str], batch_size: int = 20, use_ai: bool = T
         batch_num = i // batch_size + 1
         if current_batch != batch_num:
             current_batch = batch_num
-            print(f"[Classification] Processing batch {batch_num}/{total_batches}")
+            print(Fore.BLUE + f"[theWatcher] Filtering items with AI (batch {batch_num}/{total_batches}) - month: {month}" + Style.RESET_ALL)
         
         batch = [{"index": j, "title": titles[j]} for j in range(i, min(i+batch_size, len(titles)))]
-        
+
         tries = 0
         while tries < 3:
             tries += 1
