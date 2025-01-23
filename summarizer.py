@@ -4,6 +4,7 @@ import time
 import re
 from typing import List, TypedDict
 from datetime import datetime
+from dateutil.parser import parse
 from dotenv import load_dotenv
 import os
 from ai_prompts import summarization_prompt
@@ -31,43 +32,25 @@ def batch_vulnerabilities(vulns: List[dict], batch_size: int = 35) -> List[List[
     return [vulns[i:i + batch_size] for i in range(0, len(vulns), batch_size)]
 
 def format_vulnerability_entry(vuln: dict, tech_item: dict) -> str:
-    """Format a vulnerability entry with description and versions"""
+    """Format a vulnerability entry with indented description"""
     source = vuln.get('source', '').lower()
     desc = tech_item.get('description', '')
-    versions = tech_item.get('affected_versions', '')
-    vuln_type = tech_item.get('type', '')
     
-    # Base entry with title and link
     if source == 'nist':
-        base = f"- [{vuln['title'].split(':')[0]}]({vuln['link']})"
-    else:
-        base = f"- [{vuln['title']}]({vuln['link']})"
-    
-    # Add metadata
-    meta = []
-    if vuln_type:
-        meta.append(f"Type: {vuln_type}")
-    if versions and versions.lower() != "unknown":
-        meta.append(f"Affects: {versions}")
-    if desc:
-        meta.append(desc)
-    
-    # Add date and source
-    if source == 'nist':
-        date_src = f"({vuln['date']}) [NIST]"
+        # Extract only CVE ID from title
+        title = vuln['title'].split(':')[0].strip()
+        # Format date to show only date part
+        date = parse(vuln['date']).strftime('%B %d, %Y')
+        return f"- [{title}]({vuln['link']}) ({date}) [NIST]\n    - {desc}"
     elif source == 'full disclosure':
-        date_parts = vuln['date'].split('via')
-        author = date_parts[0].strip() if len(date_parts) > 1 else ''
-        date = date_parts[-1].strip()
-        date_src = f"({author} via Full Disclosure ({date})) [Full Disclosure]"
+        date = vuln['date'].split('via')[-1].strip()
+        # Remove "Fulldisclosure" from date if present
+        date = date.replace('Fulldisclosure', '').replace('()', '').strip()
+        return f"- [{vuln['title']}]({vuln['link']}) ({date}) [Full Disclosure]\n    - {desc}"
     else:
-        date_src = f"({vuln['date']}) [{vuln['source']}]"
-    
-    # Combine all parts
-    return f"{base} [{' | '.join(meta)}] {date_src}"
+        return f"- [{vuln['title']}]({vuln['link']}) ({vuln['date']}) [{vuln['source']}]\n    - {desc}"
 
-def generate_markdown_report(vulns: List[dict], tech_classifications: List[dict], report_type: str) -> str:
-    """Generate markdown report with consistent formatting"""
+def generate_markdown_report(vulns: List[dict], all_classifications: List[dict], report_type: str) -> str:
     report = f"""# Vulnerability Analysis Report - {report_type.upper()}
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Total Vulnerabilities Analyzed: {len(vulns)}
@@ -75,17 +58,28 @@ Total Vulnerabilities Analyzed: {len(vulns)}
 ## Vulnerabilities by Technology
 
 """
-    # Group vulnerabilities by technology using AI classifications
-    for tech in tech_classifications:
-        tech_name = tech['name']
-        report += f"### {tech_name}\n\n"
+    # Add vulnerabilities grouped by technology
+    all_trends = []
+    for classification in all_classifications:
+        # Add vulnerabilities
+        tech_sections = classification.get('technologies', [])
+        for tech in tech_sections:
+            tech_name = tech['name']
+            report += f"### {tech_name}\n\n"
+            for item in tech['items']:
+                vuln = vulns[item['index']]
+                entry = format_vulnerability_entry(vuln, item)
+                report += f"{entry}\n\n"
         
-        for item in tech['items']:
-            vuln = vulns[item['index']]
-            entry = format_vulnerability_entry(vuln, item)
-            report += f"{entry}\n"
-        
-        report += "\n"
+        # Collect trends
+        all_trends.extend(classification.get('trends', []))
+    
+    # Add trends section
+    if all_trends:
+        report += "\n## Security Trends Analysis\n\n"
+        for trend in all_trends:
+            report += f"### {trend['trend']}\n"
+            report += f"**Impact**: {trend['impact']}\n\n"
     
     return report
 
@@ -99,10 +93,11 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
 
     batches = batch_vulnerabilities(all_vulns)
     total_batches = len(batches)
-    summaries = []
+    all_classifications = []
     requests_count = 0
     current_batch = 0
 
+    # Process all batches first
     for i, batch in enumerate(batches):
         if current_batch != i + 1:
             current_batch = i + 1
@@ -124,7 +119,7 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
         while tries < 3:
             tries += 1
             prompt_text = summarization_prompt.replace("BATCH_SIZE", str(len(batch)))\
-                                                .replace("THIS_JSON", json.dumps(cleaned_batch, ensure_ascii=False))
+                                            .replace("THIS_JSON", json.dumps(cleaned_batch, ensure_ascii=False))
             try:
                 response = model.generate_content(
                     prompt_text,
@@ -135,14 +130,10 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
                 if response:
                     classification = json.loads(response.text)
                     if isinstance(classification, dict) and 'technologies' in classification:
-                        markdown_report = generate_markdown_report(
-                            batch, 
-                            classification['technologies'],
-                            'nist' if 'nist' in input_file else 'sources'
-                        )
-                        # Write report chunk
-                        with open(output_file, 'a', encoding='utf-8') as f:
-                            f.write(markdown_report)
+                        all_classifications.append({
+                            'technologies': classification['technologies'],
+                            'trends': classification.get('trends', [])
+                        })
                         break
                 print(f"Retrying batch {current_batch}/{total_batches}...")
             except Exception as e:
@@ -150,6 +141,15 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
             time.sleep(5)
 
         requests_count += 1
+
+    # Generate final report only once
+    report = generate_markdown_report(all_vulns, all_classifications, 
+                                   'nist' if 'nist' in input_file else 'sources')
+    
+    # Write complete report
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(report)
 
     print(f"Report saved in {output_file}")
 

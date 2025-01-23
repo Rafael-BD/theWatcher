@@ -55,9 +55,16 @@ def get_nist_cves(
     start_index = 0
     
     print(f"Starting CVE scraping from {format_date(start_date)} to {format_date(end_date)}")
+    print(f"Max CVEs to collect: {max_cves if max_cves else 'unlimited'}")
     
     while True:
         if max_cves and len(vulns) >= max_cves:
+            print(f"Reached maximum number of CVEs ({max_cves}). Stopping collection.")
+            break
+            
+        # Calculate how many more items we need
+        remaining = max_cves - len(vulns) if max_cves else None
+        if remaining and remaining <= 0:
             break
             
         params = {
@@ -71,7 +78,7 @@ def get_nist_cves(
         }
         
         response = requests.get("https://nvd.nist.gov/vuln/search/results", 
-                                params=params, headers=HEADERS, timeout=10)
+                              params=params, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
         
         rows = soup.select('table tbody tr')
@@ -80,11 +87,10 @@ def get_nist_cves(
             break
             
         for row in rows:
+            # Check limit before processing each row
             if max_cves and len(vulns) >= max_cves:
-                print(f"Reached maximum number of CVEs: {max_cves}")
                 break
                 
-            # Skip if requires classification and has none
             if classified_only and not has_cvss_score(row):
                 continue
                 
@@ -109,9 +115,19 @@ def get_nist_cves(
                 "source": "NIST",
                 "severity": severity
             })
+            
+            # Check if we've reached the limit after adding
+            if max_cves and len(vulns) >= max_cves:
+                print(f"Collected maximum number of CVEs ({max_cves})")
+                break
         
+        # Break the loop if we've reached the limit
+        if max_cves and len(vulns) >= max_cves:
+            break
+            
         start_index += len(rows)
         print(f"Processed {len(vulns)} CVEs so far")
         time.sleep(1)
-        
-    return vulns
+    
+    print(f"Final CVE count: {len(vulns)}")
+    return vulns[:max_cves] if max_cves else vulns
