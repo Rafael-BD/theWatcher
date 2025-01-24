@@ -12,7 +12,7 @@ theWatcher is a security vulnerability collection and analysis tool. It retrieve
   - Full Disclosure
   - Exploit-DB
   - NIST
-- Summarize vulnerabilities using AI (OpenAI's Gemini-based model), grouping them by technology and highlighting trends
+- Summarize vulnerabilities using AI, grouping them by technology and highlighting trends
 - Filter vulnerabilities by severity
 - Limit the number of items collected from each source
 
