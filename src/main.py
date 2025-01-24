@@ -129,14 +129,12 @@ def collect_vulnerabilities(args):
         print(f"Collecting items from sources between {args.start_date.strftime('%Y-%m-%d')} and {args.end_date.strftime('%Y-%m-%d')}...")
         
         if 'fulldisclosure' in args.sources:
-            fd_vulns = get_full_disclosure_latest(args.start_date, args.end_date, use_ai=not args.no_ai)
-            fd_vulns = fd_vulns[:max_items] if max_items else fd_vulns
+            fd_vulns = get_full_disclosure_latest(args.start_date, args.end_date, use_ai=not args.no_ai, max_items=max_items)
             vulns.extend(fd_vulns)
             print(f"Full Disclosure results: {len(fd_vulns)}")
         
         if 'exploitdb' in args.sources:
-            edb_vulns = get_exploitdb_rss(args.start_date, args.end_date)
-            edb_vulns = edb_vulns[:max_items] if max_items else edb_vulns
+            edb_vulns = get_exploitdb_rss(args.start_date, args.end_date, max_items=max_items)
             vulns.extend(edb_vulns)
             print(f"Exploit-DB results: {len(edb_vulns)}")
             
@@ -147,7 +145,7 @@ def collect_vulnerabilities(args):
             start_date=args.start_date,
             end_date=args.end_date,
             classified_only=not args.include_unclassified,
-            max_cves=max_items,  # Apply the limit per source
+            max_cves=max_items,
             min_severity=args.min_severity
         )
         vulns.extend(nist_vulns)

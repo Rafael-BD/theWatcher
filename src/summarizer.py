@@ -52,7 +52,7 @@ def format_vulnerability_entry(vuln: dict, tech_item: dict) -> str:
         return f"- [{vuln['title']}]({vuln['link']}) ({vuln['date']}) [{vuln['source']}]\n    - {desc}"
 
 def generate_markdown_report(vulns: List[dict], all_classifications: List[dict], report_type: str) -> str:
-    report = f"""# Vulnerability Analysis Report - {report_type.upper()}
+    report = f"""# Vulnerability Analysis Report
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Total Vulnerabilities Analyzed: {len(vulns)}
 
