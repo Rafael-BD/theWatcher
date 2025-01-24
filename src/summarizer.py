@@ -51,7 +51,14 @@ def format_vulnerability_entry(vuln: dict, tech_item: dict) -> str:
     else:
         return f"- [{vuln['title']}]({vuln['link']}) ({vuln['date']}) [{vuln['source']}]\n    - {desc}"
 
-def generate_markdown_report(vulns: List[dict], all_classifications: List[dict], report_type: str) -> str:
+def format_date_str(date_str: str) -> str:
+    try:
+        parsed_date = parse(date_str)
+        return parsed_date.strftime('%d %b %Y')
+    except:
+        return date_str
+
+def generate_markdown_report(vulns: List[dict], all_classifications: List[dict]) -> str:
     report = f"""# Vulnerability Analysis Report
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Total Vulnerabilities Analyzed: {len(vulns)}
@@ -59,32 +66,25 @@ Total Vulnerabilities Analyzed: {len(vulns)}
 ## Vulnerabilities by Technology
 
 """
-    # Add vulnerabilities grouped by technology
-    all_trends = []
-    for classification in all_classifications:
-        # Add vulnerabilities
+    for idx, classification in enumerate(all_classifications):
         tech_sections = classification.get('technologies', [])
-        for tech in tech_sections:
+        for t_idx, tech in enumerate(tech_sections):
             tech_name = tech['name']
             report += f"### {tech_name}\n\n"
             for item in tech['items']:
                 vuln = vulns[item['index']]
-                entry = format_vulnerability_entry(vuln, item)
-                report += f"{entry}\n\n"
-        
-        # Collect trends
-        all_trends.extend(classification.get('trends', []))
-    
-    # Add trends section
-    if all_trends:
-        report += "\n## Security Trends Analysis\n\n"
-        for trend in all_trends:
-            report += f"### {trend['trend']}\n"
-            report += f"**Impact**: {trend['impact']}\n\n"
-    
+                date_formatted = format_date_str(vuln['date'])
+                source = vuln['source']
+                report += f"{date_formatted} [{source}]\n"
+                report += f"- [{vuln['title']}]({vuln['link']})\n"
+                report += f"    - {item['description']}\n\n"
+            report += "---\n"
     return report
 
-def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.json", output_file: str = "./output/vulnerability_report.md"):
+def summarize_vulnerabilities(
+    input_file: str = "./output/all_vulnerabilities.json",
+    output_file: str = "./output/vulnerability_report.md"
+):
     print(Fore.BLUE + f"[theWatcher] Loading vulnerabilities from {input_file}" + Style.RESET_ALL)
     if not api_key:
         print(Fore.YELLOW + "[theWatcher] No API key found. Skipping summarization." + Style.RESET_ALL)
@@ -96,10 +96,10 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
     batches = batch_vulnerabilities(all_vulns)
     total_batches = len(batches)
     all_classifications = []
+    trends_summaries = []
     requests_count = 0
     current_batch = 0
 
-    # Process all batches first
     for i, batch in enumerate(batches):
         print(Fore.BLUE + f"[theWatcher] Summarizing items in batch {i+1}/{total_batches}" + Style.RESET_ALL)
         if current_batch != i + 1:
@@ -133,9 +133,9 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
                     classification = json.loads(response.text)
                     if isinstance(classification, dict) and 'technologies' in classification:
                         all_classifications.append({
-                            'technologies': classification['technologies'],
-                            'trends': classification.get('trends', [])
+                            'technologies': classification['technologies']
                         })
+                        trends_summaries.append(classification.get('trendSummary', ''))
                         break
                 print(Fore.YELLOW + f"[theWatcher] Retrying batch {i+1}/{total_batches}..." + Style.RESET_ALL)
             except Exception as e:
@@ -144,16 +144,33 @@ def summarize_vulnerabilities(input_file: str = "./output/all_vulnerabilities.js
 
         requests_count += 1
 
-    # Generate final report only once
-    report = generate_markdown_report(all_vulns, all_classifications, 
-                                   'nist' if 'nist' in input_file else 'sources')
-    
-    # Write complete report
+    report = generate_markdown_report(all_vulns, all_classifications)
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(report)
 
+    trends_file = output_file.replace(".md", "_trends.md")
+    print(Fore.BLUE + "[theWatcher] Generating trends report..." + Style.RESET_ALL)
+    final_trends_prompt = (
+        "Sumarize the main trends and security notes from these partial summaries:\n\n"
+        + "\n\n".join(trends_summaries) +
+        "\n\nCreate a cohesive final explanation of key insights."
+    )
+    try:
+        response2 = model.generate_content(
+            final_trends_prompt,
+            generation_config=genai.GenerationConfig(response_mime_type="text/plain")
+        )
+        final_trends = response2.text if response2 else "No trend info."
+    except:
+        final_trends = "No trend info."
+
+    with open(trends_file, 'w', encoding='utf-8') as f:
+        f.write("# Security Trends Report\n\n")
+        f.write(final_trends)
+
     print(Fore.GREEN + f"[theWatcher] Report saved in {output_file}" + Style.RESET_ALL)
+    print(Fore.GREEN + f"[theWatcher] Trends saved in {trends_file}" + Style.RESET_ALL)
 
 def validate_summary_format(summary: dict) -> bool:
     """Validate if summary follows the required format"""

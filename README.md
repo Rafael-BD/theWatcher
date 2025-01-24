@@ -96,7 +96,7 @@ python main.py -F --output-dir ./reports
 
 Here is an example of a generated report:
 
-[Example Report](./example/all_report.md)
+[Example Report](./example/)
 
 ## Contributing
 

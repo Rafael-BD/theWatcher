@@ -109,7 +109,6 @@ def get_full_disclosure_latest(start_date, end_date, use_ai=True, max_items=None
         else:
             current_date = datetime(current_date.year, current_date.month + 1, 1)
 
-    # print_final_progress(Fore.GREEN + f"Collected {len(vulns)}/{max_items if max_items else 'unlimited'} items from [SecLists] full disclosure" + Style.RESET_ALL)
     return vulns
 
 # Exploit-DB source
