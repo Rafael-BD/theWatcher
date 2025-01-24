@@ -25,12 +25,16 @@ theWatcher is a security vulnerability collection and analysis tool. It retrieve
 ## Installation
 
 1. Clone the repository.  
-2. (Optional) Create a virtual environment and activate it.  
-3. Install dependencies:  
-   pip install -r requirements.txt
-
-4. (Optional) Create a .env file in the project root with the following content:
-   GEMINI_API_KEY=YOUR_KEY_HERE
+  ```console
+  git clone https://github.com/Rafael-BD/theWatcher
+  cd theWatcher/src
+  ```
+2. Install dependencies:  
+  ```console
+  pip install -r requirements.txt
+  ```
+3. (Optional) Create a .env file in the project root with the following content:
+   `GEMINI_API_KEY=YOUR_KEY_HERE`
 
 ## Usage
 
