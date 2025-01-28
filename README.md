@@ -4,7 +4,7 @@
   <img src="#" alt="theWatcher" width="150px">
 </h1> -->
 
-theWatcher is a security vulnerability collection and analysis tool. It retrieves data from multiple sources, applies AI-based classification and summarization when possible, and generates concise reports.
+theWatcher is a threat intelligence tool. It retrieves data from multiple sources, applies AI-based classification and summarization when possible, and generates concise reports.
 
 ## Features
 
